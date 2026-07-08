@@ -383,7 +383,11 @@
             currentActiveProduct = null;
         });
 
-        // --- 4. DATA ENTRY: SIMPAN ITEM ---
+        // =================================================================
+        const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwREXUsIuYRLCJjY1kwY_YR3fmjFOx-_WTZh1_PBjlUyunFD-BYvak2jbgQSe3RRj5P/exec";
+        // =================================================================
+
+        // --- 4. DATA ENTRY: SIMPAN ITEM & OTOMATIS KIRIM KE GOOGLE SHEETS ---
         btnSaveEntry.addEventListener('click', () => {
             const qty = parseInt(returQty.value);
             const expiredDate = returExp.value;
@@ -391,41 +395,56 @@
             if(!qty || qty <= 0) { alert('Isi Qty minimal 1!'); returQty.focus(); return; }
             if(!expiredDate) { alert('Isi tanggal kedaluwarsa!'); returExp.focus(); return; }
 
-            returList.push({
+            // Data yang akan kita olah
+            const itemRetur = {
                 plu: currentActiveProduct.plu,
                 barcode: currentActiveProduct.barcode,
                 descp: currentActiveProduct.descp,
                 qty_retur: qty,
                 tgl_expired: expiredDate
-            });
-            
-            renderReturTable();
-            entryFormSection.classList.add('hidden');
-            manualBarcode.value = '';
-            currentActiveProduct = null;
-        });
+            };
 
-        function renderReturTable() {
-            if(returList.length === 0) {
-                returTableBody.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-gray-400 italic">Belum ada item ditambahkan. Silakan scan produk.</td></tr>`;
-                btnExport.classList.add('hidden');
-                return;
-            }
-            btnExport.classList.remove('hidden');
-            returTableBody.innerHTML = '';
-            returList.forEach((item, index) => {
-                const tr = document.createElement('tr');
-                tr.className = "border-b border-gray-100 hover:bg-gray-50 transition";
-                tr.innerHTML = `
-                    <td class="p-3 font-mono text-gray-700">${item.plu || '-'}</td>
-                    <td class="p-3 font-mono text-gray-600">${item.barcode || '-'}</td>
-                    <td class="p-3 font-medium text-gray-900">${item.descp || '-'}</td>
-                    <td class="p-3 text-center font-bold text-indigo-600 text-sm">${item.qty_retur}</td>
-                    <td class="p-3 text-gray-600">${item.tgl_expired}</td>
-                    <td class="p-3 text-center"><button onclick="deleteReturItem(${index})" class="text-red-500 hover:text-red-700 font-semibold cursor-pointer">Hapus</button></td>
-                `;
-                returTableBody.appendChild(tr);
+            // 1. Tetap simpan ke dalam daftar tabel aplikasi (lokal) seperti biasa
+            returList.push(itemRetur);
+            renderReturTable();
+
+            // Ubah teks tombol jadi Loading biar user tahu proses sedang berjalan
+            const originalBtnText = btnSaveEntry.innerText;
+            btnSaveEntry.innerText = "Mengirim ke Sheets...";
+            btnSaveEntry.disabled = true;
+
+            // 2. UTAMA: Panggil kurir FETCH dengan metode POST untuk mengirim ke Google Sheets
+            fetch(APPS_SCRIPT_URL, {
+                method: "POST",
+                body: JSON.stringify(itemRetur),
+                headers: {
+                    "Content-Type": "text/plain;charset=utf-8"
+                }
+            })
+            .then(res => res.json())
+            .then(response => {
+                if(response.status === "success") {
+                    console.log("Data berhasil masuk ke Google Sheets!");
+                } else {
+                    alert("Aplikasi mencatat lokal, tapi gagal sinkron ke Sheets: " + response.message);
+                }
+            })
+            .catch(err => {
+                console.error(err);
+                alert("Gagal otomatis sinkron ke Google Sheets (Kendala Jaringan). Namun data tetap tersimpan di tabel bawah aplikasi.");
+            })
+            .finally(() => {
+                // Kembalikan tombol ke kondisi semula setelah proses selesai
+                btnSaveEntry.innerText = originalBtnText;
+                btnSaveEntry.disabled = false;
+                
+                // Tutup form input dan bersihkan field
+                entryFormSection.classList.add('hidden');
+                manualBarcode.value = '';
+                currentActiveProduct = null;
             });
+        });
+        
         }
 
         function deleteReturItem(index) { returList.splice(index, 1); renderReturTable(); }
